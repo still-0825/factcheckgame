@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=Inter:wght@400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DotGothic16", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "DotGothic16", ui-monospace, monospace;
+}
+
+/* Custom retro scanline and pixel-art effects */
+.retro-border {
+  border-style: solid;
+  border-width: 4px;
+  border-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M0 0h12v12H0z' fill='none'/%3E%3Cpath d='M4 0h4v4H4zm4 4h4v4H8zm-4 4h4v4H4zm-4-4h4v4H0z' fill='%23222'/%3E%3C/svg%3E") 4 repeat;
+}
+
+.pixel-bg {
+  background-color: #0d0d0d;
+  background-image: linear-gradient(to right, #161616 1px, transparent 1px),
+                    linear-gradient(to bottom, #161616 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.pixelated {
+  image-rendering: pixelated;
+}
+

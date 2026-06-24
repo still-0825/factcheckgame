@@ -1,0 +1,6 @@
+{
+  "name": "FactChecker Spec",
+  "description": "メディアリテラシーやファクトチェック能力を養うアドベンチャーゲームの仕様書プロジェクト",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
