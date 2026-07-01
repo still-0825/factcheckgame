@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Search, BookOpen, AlertTriangle, CheckCircle, HelpCircle, ArrowRight, RefreshCw, Volume2, VolumeX, X, Link as LinkIcon, Heart } from "lucide-react";
+import { Search, BookOpen, AlertTriangle, CheckCircle, HelpCircle, ArrowRight, RefreshCw, Volume2, VolumeX, X, Link as LinkIcon, Heart, Lock, Play, ArrowLeft } from "lucide-react";
+import { chaptersData, Dialogue, Evidence, WebPage } from "./data/chaptersData";
 
 // Web Audio API Retro Synth for 16-bit sound effects
 class SoundEngine {
@@ -82,8 +83,114 @@ class SoundEngine {
 
 const sounds = new SoundEngine();
 
+interface ConnectionDef {
+  fromIndex: number;
+  toIndex: number;
+  pathD: string;
+  labelX: number;
+  labelY: number;
+  label: string;
+  colorClass: string;
+  strokeColor: string;
+}
+
+const chapterConnections: Record<number, ConnectionDef[]> = {
+  1: [
+    {
+      fromIndex: 0,
+      toIndex: 1,
+      pathD: "M 180 110 L 720 110",
+      labelX: 400,
+      labelY: 92,
+      label: "⚡ 矛盾",
+      colorClass: "bg-rose-600 border-rose-300 text-white",
+      strokeColor: "#ef4444"
+    },
+    {
+      fromIndex: 1,
+      toIndex: 2,
+      pathD: "M 720 110 L 450 330",
+      labelX: 535,
+      labelY: 202,
+      label: "✓ 裏付け",
+      colorClass: "bg-emerald-600 border-emerald-300 text-white",
+      strokeColor: "#10b981"
+    }
+  ],
+  2: [
+    {
+      fromIndex: 0,
+      toIndex: 1,
+      pathD: "M 180 110 L 720 110",
+      labelX: 400,
+      labelY: 92,
+      label: "✓ 裏付け",
+      colorClass: "bg-emerald-600 border-emerald-300 text-white",
+      strokeColor: "#10b981"
+    },
+    {
+      fromIndex: 1,
+      toIndex: 2,
+      pathD: "M 720 110 L 450 330",
+      labelX: 535,
+      labelY: 202,
+      label: "✓ 裏付け",
+      colorClass: "bg-emerald-600 border-emerald-300 text-white",
+      strokeColor: "#10b981"
+    }
+  ],
+  3: [
+    {
+      fromIndex: 0,
+      toIndex: 1,
+      pathD: "M 180 110 L 720 110",
+      labelX: 400,
+      labelY: 92,
+      label: "✓ 裏付け",
+      colorClass: "bg-emerald-600 border-emerald-300 text-white",
+      strokeColor: "#10b981"
+    }
+  ],
+  4: [
+    {
+      fromIndex: 0,
+      toIndex: 1,
+      pathD: "M 180 110 L 720 110",
+      labelX: 400,
+      labelY: 92,
+      label: "🔗 関連",
+      colorClass: "bg-emerald-600 border-emerald-300 text-white",
+      strokeColor: "#10b981"
+    },
+    {
+      fromIndex: 1,
+      toIndex: 2,
+      pathD: "M 720 110 L 450 330",
+      labelX: 535,
+      labelY: 202,
+      label: "🔗 関連",
+      colorClass: "bg-emerald-600 border-emerald-300 text-white",
+      strokeColor: "#10b981"
+    },
+    {
+      fromIndex: 0,
+      toIndex: 2,
+      pathD: "M 180 110 L 450 330",
+      labelX: 265,
+      labelY: 202,
+      label: "🔗 関連",
+      colorClass: "bg-emerald-600 border-emerald-300 text-white",
+      strokeColor: "#10b981"
+    }
+  ]
+};
+
 // --- Types & Constants ---
 type GameState =
+  | "TITLE"
+  | "CHAPTER_SELECT"
+  | "CHAPTER_CLEAR_CHOICE"
+  | "CHAPTER_INTRO"
   | "STORY_OPENING"
   | "BROWSER_SEARCH"
   | "BOARD_TRIGGER_CONVERSATION"
@@ -92,29 +199,39 @@ type GameState =
   | "STORY_EPILOGUE"
   | "CREDITS";
 
-interface Evidence {
-  id: string;
-  title: string;
-  source: string;
-  content: string;
-  badgeColor: string;
-}
-
-interface Dialogue {
-  char: "レン" | "アオイ" | "タカシ" | "システム";
-  text: string;
-  avatar: "ren" | "aoi" | "takashi" | "none";
-}
-
 // Fixed Pixel Concepts Images
 const AVATAR_IMAGES = {
   ren: "/src/assets/images/ren_young_pixel_1782282787763.jpg",
   aoi: "/src/assets/images/aoi_clean_pixel_1782282803962.jpg",
   takashi: "/src/assets/images/character_pixel_concept_1782279857351.jpg",
+  haruto: "/src/assets/images/character_pixel_concept_1782279857351.jpg",
+  joe: "/src/assets/images/character_pixel_concept_1782279857351.jpg",
+  sato: "/src/assets/images/character_pixel_concept_1782279857351.jpg",
+  system: ""
 };
 
 export default function App() {
-  const [gameState, setGameState] = useState<GameState>("STORY_OPENING");
+  const [gameState, setGameState] = useState<GameState>("TITLE");
+  const [currentChapter, setCurrentChapter] = useState(1);
+  const [maxUnlockedChapter, setMaxUnlockedChapter] = useState<number>(() => {
+    const saved = localStorage.getItem("factchecker_max_unlocked");
+    return saved ? parseInt(saved, 10) : 1;
+  });
+
+  const resetChapterStates = () => {
+    setSearchQuery("");
+    setSearchResults([]);
+    setOpenedPages([]);
+    setGatheredEvidences([]);
+    setShowEvidenceBoardOverlay(false);
+    setSelectedClaimId(null);
+    setSelectedEvidenceId(null);
+    setLives(3);
+    setActiveTab("sns");
+    setIsDeductionTriggered(false);
+    setCurrentDialogueIndex(0);
+  };
+
   const [currentDialogueIndex, setCurrentDialogueIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<string[]>([]);
@@ -133,30 +250,12 @@ export default function App() {
   // Evidence Dialogues types and state
   const [activeEvidenceDialogue, setActiveEvidenceDialogue] = useState<{
     evidenceId: string;
-    lines: Array<{ char: string; text: string; avatar: "ren" | "aoi" }>;
+    lines: Dialogue[];
     currentIndex: number;
   } | null>(null);
   const [evidenceTypedText, setEvidenceTypedText] = useState("");
   const [isEvidenceTyping, setIsEvidenceTyping] = useState(false);
   const evidenceTypingTimerRef = useRef<any>(null);
-
-  const evidenceDialoguesMap: Record<string, Array<{ char: string; text: string; avatar: "ren" | "aoi" }>> = {
-    evidence_mika: [
-      { char: "アオイ", avatar: "aoi", text: "ミカちゃんの個人ブログを見つけたわ。宣伝がすごくいかにもって感じね…。" },
-      { char: "レン", avatar: "ren", text: "『1週間で10kg痩せる、副作用ゼロ』か…。それにしても、このサプリ、8,000円ってかなり高額だな。" },
-      { char: "アオイ", avatar: "aoi", text: "これで1つ目の証拠付箋ゲットね！他にも証拠がないか調べてみましょう！" }
-    ],
-    evidence_health: [
-      { char: "レン", avatar: "ren", text: "ヘルス・ファクト・オンラインの記事だ。専門家の警告が載っているな。" },
-      { char: "アオイ", avatar: "aoi", text: "『多量摂取すると強い下痢の副作用を引き起こす危険性がある』…やっぱり！副作用ゼロなんて大嘘じゃない！" },
-      { char: "レン", avatar: "ren", text: "これで重要な証拠付箋が集まったな。嘘を暴く手がかりになりそうだ。" }
-    ],
-    evidence_national: [
-      { char: "アオイ", avatar: "aoi", text: "国民生活安全センター（.go.jp）からの公式警告よ！すごく信頼性の高い一次情報ね。" },
-      { char: "レン", avatar: "ren", text: "『臨床データのない誇大広告や健康被害の相談が急増している』か。完全にアウトだな。" },
-      { char: "アオイ", avatar: "aoi", text: "公的機関のサイトが発信しているから、最強のファクトチェック素材になるわね！" }
-    ]
-  };
 
   // Typewriter effect ref
   const typingTimerRef = useRef<any>(null);
@@ -168,55 +267,55 @@ export default function App() {
     setIsMuted(sounds.muted);
   };
 
-  // Dialogue Data for Opening
-  const openingDialogues: Dialogue[] = [
-    { char: "レン", text: "うおおおっ！このSNSの投稿、めちゃくちゃ凄くない！？アオイ！", avatar: "ren" },
-    { char: "アオイ", text: "どれどれ？……『奇跡のダイエットフルーツ！』", avatar: "aoi" },
-    { char: "アオイ", text: "『青い果物を食べるだけで、運動せずに1週間で10kg痩せる！』", avatar: "aoi" },
-    { char: "アオイ", text: "『副作用もゼロ！』……って、これミカが紹介してるやつじゃない。", avatar: "aoi" },
-    { char: "レン", text: "そう！ミカちゃんが大絶賛してるんだから絶対に本物だよ！", avatar: "ren" },
-    { char: "レン", text: "売り切れる前に早く買わなきゃって、クラスのみんなも騒いでるんだ！", avatar: "ren" },
-    { char: "アオイ", text: "ちょっと、レン！いつからネットの書き込みが全部本物になったのよ。", avatar: "aoi" },
-    { char: "アオイ", text: "そんな怪しすぎる広告、まずは裏を調べてみなくちゃダメ！", avatar: "aoi" },
-    { char: "レン", text: "ええ〜、ミカちゃんが嘘をつくわけないよ。", avatar: "ren" },
-    { char: "レン", text: "でもまあ、アオイがそこまで言うなら一応調べてみるけど……。", avatar: "ren" },
-    { char: "アオイ", text: "よし、じゃあブラウザの検索システムを立ち上げて。", avatar: "aoi" },
-    { char: "アオイ", text: "怪しいと思う「単語」をクリックして、検索窓にセットするのよ。", avatar: "aoi" },
-    { char: "アオイ", text: "今回のターゲットは『青い果物』。", avatar: "aoi" },
-    { char: "アオイ", text: "見た目での下線やホバーハイライトが出ているものがあるわ。", avatar: "aoi" },
-    { char: "アオイ", text: "重要なワードかもしれないわ！クリックしてみてね！", avatar: "aoi" }
-  ];
+  // Dynamically computed dialogue list for the current chapter
+  const currentChapterData = chaptersData[currentChapter] || chaptersData[1];
 
-  // Dialogue Data for Board Match Trigger
-  const matchDialogues: Dialogue[] = [
-    { char: "アオイ", text: "レン、ついに証拠が揃ったわね！", avatar: "aoi" },
-    { char: "レン", text: "本当だ！ミカちゃんのブログに書かれている内容と……", avatar: "ren" },
-    { char: "レン", text: "医療機関の『痩せる効果はなく、強い下痢になる副作用がある』って記述……", avatar: "ren" },
-    { char: "レン", text: "これが完全に矛盾してる！", avatar: "ren" },
-    { char: "アオイ", text: "そう、これがデマの正体よ。", avatar: "aoi" },
-    { char: "アオイ", text: "集めた証拠を『証拠ボード』で整理したから、一回確認してみましょう！", avatar: "aoi" }
-  ];
+  const ev0 = currentChapterData.evidenceList[0];
+  const ev1 = currentChapterData.evidenceList[1];
+  const ev2 = currentChapterData.evidenceList[2];
 
-  // Dialogue Data for Epilogue
-  const epilogueDialogues: Dialogue[] = [
+  const openingDialogues = currentChapterData.introDialogues;
+  const matchDialogues = currentChapterData.matchDialogues;
+  const evidenceDialoguesMap = currentChapterData.evidenceDialogues;
+
+  const epilogueDialogues: Dialogue[] = currentChapter === 4 ? [
+    { char: "レン", text: "サトウを告発できて本当に良かった……。僕たちの街のパニックもこれで収まるね。", avatar: "ren" },
+    { char: "レン", text: "それにしても、ネットの情報って本当に怖いんだね。", avatar: "ren" },
+    { char: "レン", text: "僕、これまでは『みんなが言ってるから』『面白そうだから』って理由だけで、SNSを信じ込んで拡散してたよ……。", avatar: "ren" },
+    { char: "レン", text: "傷つける手伝いになってたかもしれないんだなって気付いたよ。", avatar: "ren" },
+    { char: "レン", text: "これからは、安易に信じてシェアする前に、一度立ち止まって、自分で裏づけとなる一次情報をしっかり調べるようにするよ！", avatar: "ren" },
+    { char: "アオイ", text: "ふふ、レン、本当に成長したわね。情報社会を生きる私たちには、そういう自覚が何より大切なのよ。", avatar: "aoi" },
+    { char: "レン", text: "それにさ……今回、アオイが隣にいて、調べ方を優しく教えてくれなかったら、僕は今でもデマに踊らされたままだったよ。", avatar: "ren" },
+    { char: "レン", text: "真実を見抜く目を教えてくれたのは、アオイんだ。本当に、本当にありがとう！", avatar: "ren" },
+    { char: "アオイ", text: "もう、急に真面目になっちゃって……。ちょっと照れるじゃない。", avatar: "aoi" },
+    { char: "アオイ", text: "でも、レンがそうやって真剣に成長してくれたなら、私の教え甲斐もあったってものよ。", avatar: "aoi" },
+    { char: "アオイ", text: "さあ、これからもネットの海を渡る時は、二人で一緒にね！", avatar: "aoi" }
+  ] : currentChapter === 3 ? [
+    { char: "レン", text: "ジョーが騙されずに済んで本当に良かった……！ディープフェイク動画の仕組み、恐ろしいね。", avatar: "ren" },
+    { char: "レン", text: "動画や本人の声だから本物だなんて、もう信じちゃいけない時代なんだな。", avatar: "ren" },
+    { char: "アオイ", text: "その通りよ、レン。これからは『本人の口から喋っている動画』すら、一次データと比較して、科学的な検証やフル会見をチェックする必要があるわ。", avatar: "aoi" },
+    { char: "レン", text: "でも、こうしてデマを見破る力がついてくると、ちょっと楽しくなってきたよ！", avatar: "ren" },
+    { char: "アオイ", text: "その調子よ！でも、まだすべての事件が終わったわけじゃないわ。次も気合を入れていきましょう！", avatar: "aoi" }
+  ] : currentChapter === 2 ? [
+    { char: "レン", text: "ハルトがパニックにならずに済んで本当に良かった……。", avatar: "ren" },
+    { char: "レン", text: "災害のときは不安で、ついみんなに危険を知らせなきゃって、不確かな情報を拡散しがちだよね。", avatar: "ren" },
+    { char: "アオイ", text: "そう、それが災害デマの拡散する最大の原因なの。パニックの時こそ、一歩引いて公的機関の一次データを見る冷静さが求められるわ。", avatar: "aoi" },
+    { char: "レン", text: "うん！すごく勉強になったよ！", avatar: "ren" },
+    { char: "アオイ", text: "よし、この調子で次のデマも暴きに行きましょう！", avatar: "aoi" }
+  ] : [
     { char: "レン", text: "タカシがデマに騙されずに済んで本当に良かった……。", avatar: "ren" },
     { char: "レン", text: "それにしても、ネットの情報って本当に怖いんだね。", avatar: "ren" },
     { char: "レン", text: "僕、これまでは『みんなが言ってるから』って理由だけで、SNSを信じ込んで拡散してたよ……。", avatar: "ren" },
-    { char: "レン", text: "でもそれって、こういうデマで儲けている人を助けて、", avatar: "ren" },
     { char: "レン", text: "大切な人を傷つける手伝いになってたかもしれないんだなって気付いたよ。", avatar: "ren" },
-    { char: "レン", text: "これからは、安易に信じてシェアする前に、", avatar: "ren" },
-    { char: "レン", text: "一度立ち止まって、自分でしっかり調べるようにするよ！", avatar: "ren" },
+    { char: "レン", text: "これからは、安易に信じてシェアする前に、一度立ち止まって、自分でしっかり調べるようにするよ！", avatar: "ren" },
     { char: "アオイ", text: "ふふ、分かってくれたなら嬉しいわ。", avatar: "aoi" },
     { char: "アオイ", text: "情報を発信する側にも責任があるんだから、私たちももっと賢くならなきゃね。", avatar: "aoi" },
     { char: "アオイ", text: "さあ、これからもネットの海を渡る時は、二人で一緒にね！", avatar: "aoi" }
   ];
 
-
-
-
   // Aoi's soft guidance dialogue when failing in deduction
   const [aoiGuidanceActive, setAoiGuidanceActive] = useState(false);
-  const aoiGuidanceText = "レン、焦らなくて大丈夫だよ。一度落ち着いてみよう。\n\nタカシくんの『効果が証明された安全な果物』という発言と、私たちが集めた『臨床データが準備中』や『下痢の副作用がある』という証拠に、何か矛盾はないかな？\n\nもう一度、よく見比べてみて！";
+  const aoiGuidanceText = currentChapterData.deduction.softGuidance;
 
   // Typewriter effect implementation
   const currentDialogueList = 
@@ -283,7 +382,16 @@ export default function App() {
         setShowEvidenceBoardOverlay(true); // Auto show board matching
         setGameState("DEDUCTION_PART");
       } else if (gameState === "STORY_EPILOGUE") {
-        setGameState("CREDITS");
+        if (currentChapter < 4) {
+          const nextChap = currentChapter + 1;
+          if (nextChap > maxUnlockedChapter) {
+            setMaxUnlockedChapter(nextChap);
+            localStorage.setItem("factchecker_max_unlocked", String(nextChap));
+          }
+          setGameState("CHAPTER_CLEAR_CHOICE");
+        } else {
+          setGameState("CREDITS");
+        }
       }
       setCurrentDialogueIndex(0);
     }
@@ -355,11 +463,13 @@ export default function App() {
       const finishedId = activeEvidenceDialogue.evidenceId;
       setActiveEvidenceDialogue(null);
 
-      // Check if both evidence A and B are gathered to trigger the board match dialogue
-      const hasMika = gatheredEvidences.some((e) => e.id === "evidence_mika") || finishedId === "evidence_mika";
-      const hasHealth = gatheredEvidences.some((e) => e.id === "evidence_health") || finishedId === "evidence_health";
+      // Check if ALL evidences for the current chapter are gathered
+      const chapterEvidenceIds = currentChapterData.evidenceList.map((e) => e.id);
+      const isAllGathered = chapterEvidenceIds.every((id) => 
+        gatheredEvidences.some((ge) => ge.id === id) || finishedId === id
+      );
       
-      if (hasMika && hasHealth && !isDeductionTriggered) {
+      if (isAllGathered && !isDeductionTriggered) {
         setIsDeductionTriggered(true);
         setTimeout(() => {
           setGameState("BOARD_TRIGGER_CONVERSATION");
@@ -369,20 +479,52 @@ export default function App() {
     }
   };
 
+  // Helper: Make keywords within a text block clickable and styled as a badge-like underline
+  const renderHighlightedText = (text: string, keywords: { word: string }[]) => {
+    if (!keywords || keywords.length === 0) return text;
+    
+    // Sort keywords by length in descending order to avoid matching partial substrings first
+    const sortedKeywords = [...keywords].sort((a, b) => b.word.length - a.word.length);
+    
+    // Escape special regex chars
+    const escapedWords = sortedKeywords.map(k => k.word.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+    const regex = new RegExp(`(${escapedWords.join('|')})`, 'g');
+    
+    const parts = text.split(regex);
+    return parts.map((part, index) => {
+      const isKeyword = sortedKeywords.some(k => k.word === part);
+      if (isKeyword) {
+        return (
+          <span
+            key={index}
+            onClick={() => handleKeywordClick(part)}
+            className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-2 transition-colors px-1 bg-amber-500/10 rounded"
+          >
+            {part}
+          </span>
+        );
+      }
+      return part;
+    });
+  };
+
   // Browser Mock Engine Clicking Keyword Handlers (NO underlines, NO cursor hovers style!)
   const handleKeywordClick = (word: string) => {
     sounds.playClick();
     setSearchQuery(word);
     setActiveTab("search");
     
-    // Auto-execute search results when keyword clicked
+    // Auto-execute search results when keyword clicked from current chapter data
     let results: string[] = [];
-    if (word.includes("青い果物") || word.includes("ダイエット")) {
-      results = ["mika_blog", "health_fact", "national_center"];
-    } else if (word.includes("副作用")) {
-      results = ["health_fact", "national_center"];
-    } else if (word.includes("臨床データ")) {
-      results = ["mika_blog", "national_center"];
+    const searchMatches = currentChapterData.searchMatches;
+    
+    // Try to find matching key
+    const matchedKey = Object.keys(searchMatches).find(
+      (key) => word.toLowerCase().includes(key.toLowerCase()) || key.toLowerCase().includes(word.toLowerCase())
+    );
+    
+    if (matchedKey) {
+      results = searchMatches[matchedKey as keyof typeof searchMatches] || [];
     } else {
       results = ["no_results"];
     }
@@ -402,16 +544,20 @@ export default function App() {
     sounds.playClick();
     setActiveTab("search");
 
-    const query = searchQuery.trim();
+    const query = searchQuery.trim().toLowerCase();
     let results: string[] = [];
+    const searchMatches = currentChapterData.searchMatches;
 
-    if (query.includes("青い果物") || query.includes("ダイエット")) {
-      results = ["mika_blog", "health_fact", "national_center"];
-    } else if (query.includes("副作用")) {
-      results = ["health_fact", "national_center"];
-    } else if (query.includes("臨床データ")) {
-      results = ["mika_blog", "national_center"];
-    } else {
+    Object.keys(searchMatches).forEach((key) => {
+      if (query.includes(key.toLowerCase()) || key.toLowerCase().includes(query)) {
+        results = [...results, ...searchMatches[key as keyof typeof searchMatches]];
+      }
+    });
+
+    // Deduplicate results
+    results = Array.from(new Set(results));
+
+    if (results.length === 0) {
       results = ["no_results"];
     }
     setSearchResults(results);
@@ -431,32 +577,15 @@ export default function App() {
       setOpenedPages((prev) => [...prev, pageId]);
     }
 
-    // Add corresponding evidence
+    // Add corresponding evidence dynamically from current chapter data
     let newEvidence: Evidence | null = null;
-    if (pageId === "mika_blog") {
-      newEvidence = {
-        id: "evidence_mika",
-        title: "ミカの宣伝ブログ",
-        source: "個人ブログ：ミカのダイエット日記",
-        content: "「青い果物は食べるだけで1週間で10kg痩せる！臨床データは準備中だけど、副作用はゼロで安心！」との紹介。高額な購入リンク（8,000円）が貼られている。",
-        badgeColor: "bg-amber-100 text-amber-800 border-amber-300"
-      };
-    } else if (pageId === "health_fact") {
-      newEvidence = {
-        id: "evidence_health",
-        title: "医療ファクトオンラインの記事",
-        source: "医療ニュース：ヘルス・ファクト・オンライン",
-        content: "専門家による警告。「青い果物は激減効果があるような医学的根拠はなく、多量摂取すると強い下痢の副作用を引き起こす危険性がある」と発表。",
-        badgeColor: "bg-rose-100 text-rose-800 border-rose-300"
-      };
-    } else if (pageId === "national_center") {
-      newEvidence = {
-        id: "evidence_national",
-        title: "国民安全センターの警告",
-        source: "公的機関：国民生活安全センター（.go.jp）",
-        content: "「海外製の特定の青い果実に関して、臨床データのない誇大広告や、激しい副作用（腹痛・下痢）を伴う健康被害トラブルの相談が急増している」と注意喚起。",
-        badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-300"
-      };
+    const page = currentChapterData.webPages[pageId];
+    if (page && page.evidenceId) {
+      const evidenceId = page.evidenceId;
+      const found = currentChapterData.evidenceList.find((e) => e.id === evidenceId);
+      if (found) {
+        newEvidence = found;
+      }
     }
 
     if (newEvidence && !gatheredEvidences.some((e) => e.id === newEvidence!.id)) {
@@ -479,14 +608,10 @@ export default function App() {
   const handleDeductionSubmit = () => {
     if (!selectedClaimId || !selectedEvidenceId) return;
 
-    // Claims made by Takashi
-    // Claim A: "ミカちゃんが紹介してるんだから、科学的に効果が証明された安全な果物に決まってるだろ！" (Claim ID: "claim_1")
-    // Claim B: "早く買わないと売り切れちゃうよ！みんなも買ってるし！" (Claim ID: "claim_2")
-    
-    // Valid matches: Claim 1 with "evidence_health" (medical news) OR "evidence_national" (national center)
+    const correctMatch = currentChapterData.deduction.correctMatch;
     const isCorrect = 
-      selectedClaimId === "claim_1" && 
-      (selectedEvidenceId === "evidence_health" || selectedEvidenceId === "evidence_national");
+      selectedClaimId === correctMatch.claimId && 
+      correctMatch.evidenceIds.includes(selectedEvidenceId);
 
     if (isCorrect) {
       sounds.playCorrect();
@@ -498,7 +623,7 @@ export default function App() {
 
       if (newLives <= 0) {
         // Retry logic: restore lives and reset
-        alert("説得失敗……！デマを信じた友達を説得できませんでした。もう一度挑戦しましょう！");
+        alert(`説得失敗……！デマを信じた${currentChapterData.deduction.opponentName}を説得できませんでした。もう一度挑戦しましょう！`);
         setLives(3);
         setSelectedClaimId(null);
         setSelectedEvidenceId(null);
@@ -515,48 +640,298 @@ export default function App() {
     <div className="min-h-screen bg-neutral-900 text-neutral-100 font-sans flex flex-col antialiased select-none">
       
       {/* HEADER SECTION */}
-      <header className="bg-neutral-950 border-b-4 border-neutral-800 p-4 flex justify-between items-center z-10">
-        <div className="flex items-center gap-3">
-          <span className="retro-border bg-rose-600 px-3 py-1 font-bold text-sm tracking-wide text-white uppercase shadow-sm">
-            FactChecker
-          </span>
-          <h1 className="text-xl md:text-2xl font-bold text-rose-500 tracking-tight">
-            偽りのニュースを検証せよ
-          </h1>
-        </div>
+      {gameState !== "TITLE" && gameState !== "CHAPTER_SELECT" && gameState !== "CHAPTER_CLEAR_CHOICE" && (
+        <header className="bg-neutral-950 border-b-4 border-neutral-800 p-4 flex justify-between items-center z-10">
+          <div className="flex items-center gap-3">
+            <span className="retro-border bg-rose-600 px-3 py-1 font-bold text-sm tracking-wide text-white uppercase shadow-sm">
+              FactChecker
+            </span>
+            <h1 className="text-xl md:text-2xl font-bold text-rose-500 tracking-tight">
+              偽りのニュースを検証せよ
+            </h1>
+          </div>
 
-        <div className="flex items-center gap-4">
-          {/* LIVES/HP BAR */}
-          {(gameState === "BROWSER_SEARCH" || gameState === "DEDUCTION_PART") && (
-            <div className="flex items-center gap-2 bg-neutral-900 px-3 py-1.5 rounded-lg border-2 border-neutral-700">
-              <span className="text-xs text-neutral-400 font-bold">信用度:</span>
-              <div className="flex gap-1">
-                {[1, 2, 3].map((heart) => (
-                  <Heart
-                    key={heart}
-                    className={`w-5 h-5 ${
-                      heart <= lives ? "text-rose-500 fill-rose-500" : "text-neutral-700"
-                    } transition-all duration-300`}
-                  />
-                ))}
+          <div className="flex items-center gap-4">
+            {/* LIVES/HP BAR */}
+            {(gameState === "BROWSER_SEARCH" || gameState === "DEDUCTION_PART") && (
+              <div className="flex items-center gap-2 bg-neutral-900 px-3 py-1.5 rounded-lg border-2 border-neutral-700">
+                <span className="text-xs text-neutral-400 font-bold">信用度:</span>
+                <div className="flex gap-1">
+                  {[1, 2, 3].map((heart) => (
+                    <Heart
+                      key={heart}
+                      className={`w-5 h-5 ${
+                        heart <= lives ? "text-rose-500 fill-rose-500" : "text-neutral-700"
+                      } transition-all duration-300`}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* SOUND TOGGLE */}
-          <button
-            onClick={toggleMute}
-            className="p-2 hover:bg-neutral-800 rounded-lg text-neutral-400 hover:text-neutral-200 transition"
-            title={isMuted ? "ミュート解除" : "ミュート"}
-          >
-            {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-          </button>
-        </div>
-      </header>
+            {/* SOUND TOGGLE */}
+            <button
+              onClick={toggleMute}
+              className="p-2 hover:bg-neutral-800 rounded-lg text-neutral-400 hover:text-neutral-200 transition"
+              title={isMuted ? "ミュート解除" : "ミュート"}
+            >
+              {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+            </button>
+          </div>
+        </header>
+      )}
 
       {/* MAIN LAYOUT */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 flex flex-col justify-center relative overflow-hidden">
+      <main className="flex-1 max-w-6xl w-full mx-auto p-4 flex flex-col justify-start relative overflow-y-auto pt-6 gap-6">
         
+        {/* ========================================================
+            0. TITLE SCREEN
+            ======================================================== */}
+        <AnimatePresence>
+          {gameState === "TITLE" && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex-1 flex flex-col items-center justify-center gap-12 py-16"
+            >
+              <div className="text-center flex flex-col gap-4">
+                <motion.h1 
+                  initial={{ y: -20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.2, duration: 0.6 }}
+                  className="text-6xl md:text-8xl font-black text-rose-500 tracking-wider uppercase font-sans drop-shadow-[0_4px_12px_rgba(239,68,68,0.3)] select-none"
+                >
+                  FactChecker
+                </motion.h1>
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 0.6 }}
+                  transition={{ delay: 0.5 }}
+                  className="text-neutral-400 text-sm md:text-base tracking-widest font-mono uppercase"
+                >
+                  - Information Literacy & Fact-Checking Game -
+                </motion.p>
+              </div>
+
+              <motion.button
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.4 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  sounds.playClick();
+                  if (maxUnlockedChapter > 1) {
+                    setGameState("CHAPTER_SELECT");
+                  } else {
+                    setCurrentChapter(1);
+                    setGameState("CHAPTER_INTRO");
+                    resetChapterStates();
+                  }
+                }}
+                className="retro-border bg-rose-600 hover:bg-rose-500 text-white font-black text-xl md:text-2xl px-12 py-5 shadow-[0_6px_20px_rgba(239,68,68,0.4)] transition-all cursor-pointer select-none"
+              >
+                PLAY GAME
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ========================================================
+            0.2. CHAPTER SELECT SCREEN
+            ======================================================== */}
+        <AnimatePresence>
+          {gameState === "CHAPTER_SELECT" && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex-1 flex flex-col items-center justify-center gap-8 py-10 w-full max-w-4xl mx-auto"
+            >
+              <div className="text-center flex flex-col gap-2">
+                <span className="text-rose-500 font-bold tracking-widest text-xs font-mono uppercase">
+                  Select Chapter
+                </span>
+                <h2 className="text-4xl font-black text-neutral-100 tracking-wide">
+                  章を選択してください
+                </h2>
+                <p className="text-neutral-400 text-xs md:text-sm">
+                  挑戦する章を選んでファクトチェックを開始しましょう
+                </p>
+              </div>
+
+              {/* Chapters Grid List */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-3xl px-4">
+                {[1, 2, 3, 4].map((chNum) => {
+                  const isUnlocked = chNum <= maxUnlockedChapter;
+                  const chapData = chaptersData[chNum as keyof typeof chaptersData];
+                  const chapTitle = isUnlocked && chapData ? chapData.title : "【 ロックされています 】";
+                  const chapDesc = isUnlocked && chapData 
+                    ? `対戦相手: ${chapData.deduction.opponentName} / 信じているデマを暴け` 
+                    : "前の章をクリアしてアンロック";
+
+                  return (
+                    <motion.button
+                      key={chNum}
+                      disabled={!isUnlocked}
+                      whileHover={isUnlocked ? { scale: 1.02, y: -2 } : {}}
+                      whileTap={isUnlocked ? { scale: 0.98 } : {}}
+                      onClick={() => {
+                        sounds.playClick();
+                        setCurrentChapter(chNum);
+                        setGameState("CHAPTER_INTRO");
+                        resetChapterStates();
+                      }}
+                      className={`retro-border text-left p-5 flex flex-col justify-between gap-4 h-40 transition-all ${
+                        isUnlocked
+                          ? "bg-neutral-900 border-neutral-700 hover:border-rose-500 cursor-pointer text-neutral-100 group"
+                          : "bg-neutral-950/40 border-neutral-800/80 text-neutral-600 opacity-60 cursor-not-allowed"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start w-full">
+                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 border ${
+                          isUnlocked 
+                            ? "bg-rose-950/30 border-rose-900/60 text-rose-400 group-hover:bg-rose-900/40" 
+                            : "bg-neutral-900 border-neutral-800 text-neutral-500"
+                        }`}>
+                          CHAPTER {String(chNum).padStart(2, "0")}
+                        </span>
+                        {isUnlocked ? (
+                          <Play className="w-4 h-4 text-rose-500 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+                        ) : (
+                          <Lock className="w-4 h-4 text-neutral-600" />
+                        )}
+                      </div>
+
+                      <div>
+                        <h3 className={`text-base font-bold leading-tight ${isUnlocked ? "text-neutral-100 group-hover:text-rose-400" : "text-neutral-600"}`}>
+                          {chapTitle}
+                        </h3>
+                        <p className="text-[11px] text-neutral-400 mt-1.5 font-sans leading-normal line-clamp-2">
+                          {chapDesc}
+                        </p>
+                      </div>
+                    </motion.button>
+                  );
+                })}
+              </div>
+
+              {/* Back to Title Button */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  sounds.playClick();
+                  setGameState("TITLE");
+                }}
+                className="retro-border bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold px-8 py-3.5 text-xs tracking-widest transition-all cursor-pointer flex items-center gap-2 mt-4"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>タイトル画面に戻る</span>
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ========================================================
+            0.3. CHAPTER CLEAR CHOICE SCREEN
+            ======================================================== */}
+        <AnimatePresence>
+          {gameState === "CHAPTER_CLEAR_CHOICE" && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.05 }}
+              className="flex-1 flex flex-col items-center justify-center gap-8 py-16 bg-neutral-950/40 rounded-2xl border-2 border-neutral-800 p-8 my-auto"
+            >
+              <div className="text-center flex flex-col gap-3">
+                <span className="text-emerald-400 font-bold tracking-widest text-sm font-mono uppercase">
+                  CONGRATULATIONS!
+                </span>
+                <h2 className="text-3xl md:text-4xl font-black text-neutral-100 leading-snug">
+                  第{currentChapter}章 ファクトチェック成功！
+                </h2>
+                <p className="text-neutral-400 text-xs md:text-sm max-w-md mx-auto mt-2 leading-relaxed">
+                  デマを冷静に検証し、見事に相手の誤った主張を解きほぐしました。
+                  真実を広めるための次のステップへ進みましょう！
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center mt-4">
+                <button
+                  onClick={() => {
+                    sounds.playClick();
+                    const nextChap = currentChapter + 1;
+                    setCurrentChapter(nextChap);
+                    setGameState("CHAPTER_INTRO");
+                    resetChapterStates();
+                  }}
+                  className="retro-border bg-rose-600 hover:bg-rose-500 text-white font-black py-4 px-6 text-base tracking-widest transition-all cursor-pointer text-center flex-1 shadow-lg shadow-rose-950/40"
+                >
+                  次の章に進む
+                </button>
+
+                <button
+                  onClick={() => {
+                    sounds.playClick();
+                    setGameState("TITLE");
+                    resetChapterStates();
+                  }}
+                  className="retro-border bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-black py-4 px-6 text-base tracking-widest transition-all cursor-pointer text-center flex-1"
+                >
+                  タイトルへ戻る
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ========================================================
+            0.5. CHAPTER INTRO SCREEN
+            ======================================================== */}
+        <AnimatePresence>
+          {gameState === "CHAPTER_INTRO" && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.05 }}
+              onClick={() => {
+                sounds.playClick();
+                setGameState("STORY_OPENING");
+              }}
+              className="flex-1 flex flex-col items-center justify-center gap-6 py-16 cursor-pointer select-none bg-neutral-950/40 rounded-2xl border-2 border-neutral-800 p-8 hover:bg-neutral-950/60 transition-colors my-auto"
+            >
+              <motion.div
+                initial={{ y: -10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="text-rose-500 font-bold tracking-widest text-lg md:text-xl font-mono"
+              >
+                CHAPTER {String(currentChapter).padStart(2, "0")}
+              </motion.div>
+
+              <motion.h2
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.3, duration: 0.5 }}
+                className="text-3xl md:text-5xl font-extrabold text-neutral-100 tracking-wide text-center leading-snug max-w-2xl px-4"
+              >
+                {currentChapterData.title}
+              </motion.h2>
+
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0.3, 0.8, 0.3] }}
+                transition={{ delay: 0.6, repeat: Infinity, duration: 1.8 }}
+                className="text-neutral-500 text-xs md:text-sm font-mono uppercase tracking-widest mt-10 flex items-center gap-2"
+              >
+                <span>CLICK TO START STORY</span>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* ========================================================
             1. STORY INTRO / DIALOGUE PANEL
             ======================================================== */}
@@ -574,7 +949,7 @@ export default function App() {
                 
                 {/* Visual Concept Tag */}
                 <div className="absolute top-2 left-2 bg-neutral-800 text-neutral-400 text-xs px-2 py-1 rounded border border-neutral-700">
-                  {gameState === "STORY_OPENING" ? "第1章：奇跡のダイエットフルーツ" : 
+                  {gameState === "STORY_OPENING" ? currentChapterData.title : 
                    gameState === "BOARD_TRIGGER_CONVERSATION" ? "緊急ファクトチェック検証" : "エピローグ：真実と信頼"}
                 </div>
 
@@ -733,75 +1108,54 @@ export default function App() {
                   {/* TAB 1: SNS TIMELINE */}
                   {activeTab === "sns" && (
                     <div className="flex flex-col gap-4 max-w-xl mx-auto w-full py-4">
-                      <div className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 shadow-md">
-                        <div className="flex gap-3 items-center mb-3">
-                          <div className="w-10 h-10 rounded-full bg-rose-700 flex items-center justify-center font-bold text-white text-sm border border-rose-500">
-                            ミカ
-                          </div>
-                          <div>
-                            <div className="font-bold text-sm text-neutral-100 flex items-center gap-1.5">
-                              <span>ミカ★インフルエンサー</span>
-                              <span className="bg-sky-900 text-sky-200 text-[10px] px-1.5 py-0.5 rounded font-bold border border-sky-600">公式</span>
+                      {/* Dynamic chapter timeline posts */}
+                      {currentChapterData.timelinePosts.map((post, index) => (
+                        <div key={index} className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 shadow-md">
+                          <div className="flex gap-3 items-center mb-3">
+                            <div className={`w-10 h-10 rounded-full ${post.avatarColor || "bg-rose-700 border-rose-500"} flex items-center justify-center font-bold text-white text-sm border`}>
+                              {post.avatarText}
                             </div>
-                            <div className="text-[10px] text-neutral-500 font-mono">@mika_diet_life • 10分前</div>
+                            <div>
+                              <div className="font-bold text-sm text-neutral-100 flex items-center gap-1.5">
+                                <span>{post.author}</span>
+                                {post.badgeText && (
+                                  <span className="bg-sky-900 text-sky-200 text-[10px] px-1.5 py-0.5 rounded font-bold border border-sky-600 scale-90">
+                                    {post.badgeText}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-neutral-500 font-mono">{post.authorHandle} • {post.timeText}</div>
+                            </div>
+                          </div>
+
+                          <div className="text-neutral-200 leading-relaxed text-sm md:text-base mb-4 tracking-wide font-medium bg-neutral-950 p-3 rounded border border-neutral-800 whitespace-pre-wrap">
+                            {renderHighlightedText(post.textHtml, currentChapterData.searchKeywords)}
+                          </div>
+
+                          <div className="text-xs text-neutral-500 border-t border-neutral-800 pt-3 flex justify-between">
+                            <span>🔁 1.2万件のリポスト</span>
+                            <span>❤️ 3.5万件のいいね</span>
                           </div>
                         </div>
+                      ))}
 
-                        {/* CLICKABLE TEXT - HIGHLIGHTED KEYWORDS */}
-                        {/* Users click on words to search. We split text and handle clicks. */}
-                        <p className="text-neutral-200 leading-relaxed text-base mb-4 tracking-wide font-medium bg-neutral-950 p-3 rounded border border-neutral-800">
-                          最近ウワサの「
-                          <span 
-                            onClick={() => handleKeywordClick("青い果物")} 
-                            className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-2 transition-colors px-1 py-0.5 bg-amber-500/10 rounded"
-                          >
-                            青い果物
-                          </span>
-                          」を食べるだけで、運動ゼロで「
-                          <span 
-                            onClick={() => handleKeywordClick("1週間で10kg")} 
-                            className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-2 transition-colors px-1 py-0.5 bg-amber-500/10 rounded"
-                          >
-                            1週間で10kg
-                          </span>
-                          」激痩せしたよ！
-                          <span 
-                            onClick={() => handleKeywordClick("副作用")} 
-                            className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-2 transition-colors px-1 py-0.5 bg-amber-500/10 rounded"
-                          >
-                            副作用
-                          </span>
-                          もなくて本当に安心！私の個人ブログに特設購入リンクを貼ったのでみんな急いで！
-                        </p>
-
-                        <div className="text-xs text-neutral-500 border-t border-neutral-800 pt-3 flex justify-between">
-                          <span>🔁 1.2万件のリポスト</span>
-                          <span>❤️ 3.5万件のいいね</span>
-                        </div>
-                      </div>
-
-                      {/* Classmate Takashi's panic posting */}
-                      <div className="bg-neutral-900/60 p-4 rounded-xl border border-neutral-800/80">
-                        <div className="flex gap-3 items-center mb-2">
-                          <div className="w-8 h-8 rounded-full bg-blue-900 flex items-center justify-center font-bold text-white text-xs border border-blue-600">
-                            タ
+                      {/* Classmate's panic posting from chapter data */}
+                      {currentChapterData.classmatePost && (
+                        <div className="bg-neutral-900/60 p-4 rounded-xl border border-neutral-800/80">
+                          <div className="flex gap-3 items-center mb-2">
+                            <div className={`w-8 h-8 rounded-full ${currentChapterData.classmatePost.avatarColor || "bg-blue-900 border-blue-600"} flex items-center justify-center font-bold text-white text-xs border`}>
+                              {currentChapterData.classmatePost.avatarText}
+                            </div>
+                            <div>
+                              <div className="font-bold text-xs text-neutral-300">{currentChapterData.classmatePost.author}</div>
+                              <div className="text-[9px] text-neutral-500 font-mono">{currentChapterData.classmatePost.authorHandle} • {currentChapterData.classmatePost.timeText}</div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="font-bold text-xs text-neutral-300">タカシ (クラスメイト)</div>
-                            <div className="text-[9px] text-neutral-500 font-mono">@takashi_soccer • 2分前</div>
+                          <div className="text-xs text-neutral-300 leading-relaxed bg-neutral-950/40 p-2.5 rounded border border-neutral-800/40 mt-1 whitespace-pre-wrap">
+                            {renderHighlightedText(currentChapterData.classmatePost.textHtml, currentChapterData.searchKeywords)}
                           </div>
                         </div>
-                        <p className="text-xs text-neutral-300 leading-relaxed">
-                          ミカちゃんお勧めの「
-                          <span 
-                            onClick={() => handleKeywordClick("青い果物")} 
-                            className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-1 transition-colors px-1 bg-amber-500/10 rounded"
-                          >
-                            青い果物
-                          </span>
-                          」ガチじゃん！！これ買えば部活サボっても体が軽くなるやつ！？売り切れる前に小遣い全部はたいて買うしかないな
-                        </p>
-                      </div>
+                      )}
                     </div>
                   )}
 
@@ -854,119 +1208,36 @@ export default function App() {
                           </div>
                         ) : (
                           searchResults.map((pageId) => {
-                            if (pageId === "mika_blog") {
-                              return (
-                                <div key={pageId} className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 hover:border-amber-500/50 transition-all shadow">
-                                  <span className="text-xs text-amber-500 font-bold">個人ブログ</span>
-                                  <h4 
-                                    onClick={() => handleOpenPage("mika_blog")}
-                                    className="text-lg font-bold text-sky-400 hover:underline cursor-pointer mt-1"
-                                  >
-                                    ミカのダイエットブログ：飲むだけで1週間10kg!? 奇跡の青い果実!
-                                  </h4>
-                                  <p className="text-xs text-neutral-500 mt-0.5">http://mika-diet-diary.net/special-blue-fruit</p>
-                                  <p className="text-sm text-neutral-300 mt-2 leading-relaxed">
-                                    みんな、あの噂の「
-                                    <span 
-                                      onClick={() => handleKeywordClick("青い果物")} 
-                                      className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-1 transition-colors px-1 bg-amber-500/10 rounded"
-                                    >
-                                      青い果物
-                                    </span>
-                                    」の効果はガチ！
-                                    飲むだけで理想のスタイルに。現在、検証のための詳しい「
-                                    <span 
-                                      onClick={() => handleKeywordClick("臨床データ")} 
-                                      className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-1 transition-colors px-1 bg-amber-500/10 rounded"
-                                    >
-                                      臨床データ
-                                    </span>
-                                    」は準備中だけど、副作用は完全にゼロだよ！
-                                  </p>
-                                </div>
-                              );
+                            const page = currentChapterData.webPages[pageId as keyof typeof currentChapterData.webPages];
+                            if (!page) return null;
+
+                            // Set custom badge styling based on category
+                            let badgeColor = "bg-neutral-900 border-neutral-800 text-neutral-400";
+                            if (page.category.includes("公式") || page.category.includes(".go.jp") || page.category.includes("プレス")) {
+                              badgeColor = "bg-emerald-950/40 border-emerald-900/60 text-emerald-400";
+                            } else if (page.category.includes("ファクトチェック") || page.category.includes("検証")) {
+                              badgeColor = "bg-rose-950/40 border-rose-900/60 text-rose-400";
+                            } else if (page.category.includes("医療") || page.category.includes("専門") || page.category.includes("報道") || page.category.includes("ニュース")) {
+                              badgeColor = "bg-amber-950/40 border-amber-900/60 text-amber-400";
                             }
-                            if (pageId === "health_fact") {
-                              return (
-                                <div key={pageId} className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 hover:border-rose-500/50 transition-all shadow">
-                                  <span className="text-xs text-rose-500 font-bold">医療専門ニュース</span>
-                                  <h4 
-                                    onClick={() => handleOpenPage("health_fact")}
-                                    className="text-lg font-bold text-sky-400 hover:underline cursor-pointer mt-1"
-                                  >
-                                    【専門家警告】噂の「青い果物」のダイエット効果と重篤な副作用の懸念
-                                  </h4>
-                                  <p className="text-xs text-neutral-500 mt-0.5">http://health-fact-online.org/article/blue-fruit-caution</p>
-                                  <p className="text-sm text-neutral-300 mt-2 leading-relaxed">
-                                    SNSで流布する「
-                                    <span 
-                                      onClick={() => handleKeywordClick("青い果物")} 
-                                      className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-1 transition-colors px-1 bg-amber-500/10 rounded"
-                                    >
-                                      青い果物
-                                    </span>
-                                    」について、
-                                    日本医師機関は「劇的な減量を裏付ける具体的な科学的根拠（
-                                    <span 
-                                      onClick={() => handleKeywordClick("臨床データ")} 
-                                      className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-1 transition-colors px-1 bg-amber-500/10 rounded"
-                                    >
-                                      臨床データ
-                                    </span>
-                                    ）は一切ない」と発表。
-                                    さらに、多量摂取した場合、強い下痢や脱水症状などの「
-                                    <span 
-                                      onClick={() => handleKeywordClick("副作用")} 
-                                      className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-1 transition-colors px-1 bg-amber-500/10 rounded"
-                                    >
-                                      副作用
-                                    </span>
-                                    」を惹起する恐れがあるとして強く警告している。
-                                  </p>
-                                </div>
-                              );
-                            }
-                            if (pageId === "national_center") {
-                              return (
-                                <div key={pageId} className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 hover:border-emerald-500/50 transition-all shadow">
-                                  <span className="text-xs text-emerald-500 font-bold">公的・政府機関 (.go.jp)</span>
-                                  <h4 
-                                    onClick={() => handleOpenPage("national_center")}
-                                    className="text-lg font-bold text-sky-400 hover:underline cursor-pointer mt-1"
-                                  >
-                                    国民生活安全センター：海外製の未承認「青い果実」による健康トラブル相談への注意喚起
-                                  </h4>
-                                  <p className="text-xs text-neutral-500 mt-0.5">https://www.kokusen.go.jp/news/blue-fruit-alert.html</p>
-                                  <p className="text-sm text-neutral-300 mt-2 leading-relaxed">
-                                    海外の不当な業者が販売している「
-                                    <span 
-                                      onClick={() => handleKeywordClick("青い果物")} 
-                                      className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-1 transition-colors px-1 bg-amber-500/10 rounded"
-                                    >
-                                      青い果物
-                                    </span>
-                                    」の輸入トラブル相談が激増。
-                                    「
-                                    <span 
-                                      onClick={() => handleKeywordClick("臨床データ")} 
-                                      className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-1 transition-colors px-1 bg-amber-500/10 rounded"
-                                    >
-                                      臨床データ
-                                    </span>
-                                    」がなく、過大な広告による詐欺被害が疑われるもの、および激しい「
-                                    <span 
-                                      onClick={() => handleKeywordClick("副作用")} 
-                                      className="cursor-pointer font-bold text-amber-400 hover:text-amber-300 underline decoration-amber-400/50 underline-offset-1 transition-colors px-1 bg-amber-500/10 rounded"
-                                    >
-                                      副作用
-                                    </span>
-                                    」の被害情報。
-                                    ドメインが「.go.jp」等の公的機関の一次情報を精査するよう呼びかけています。
-                                  </p>
-                                </div>
-                              );
-                            }
-                            return null;
+
+                            return (
+                              <div key={pageId} className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700 transition-all shadow">
+                                <span className={`text-[10px] font-bold border px-2 py-0.5 rounded ${badgeColor}`}>
+                                  {page.category}
+                                </span>
+                                <h4 
+                                  onClick={() => handleOpenPage(pageId)}
+                                  className="text-base md:text-lg font-bold text-sky-400 hover:underline cursor-pointer mt-1.5"
+                                >
+                                  {page.title}
+                                </h4>
+                                <p className="text-xs text-neutral-500 mt-0.5">{page.url}</p>
+                                <p className="text-sm text-neutral-300 mt-2 leading-relaxed">
+                                  {renderHighlightedText(page.excerpt, currentChapterData.searchKeywords)}
+                                </p>
+                              </div>
+                            );
                           })
                         )}
                       </div>
@@ -1008,10 +1279,10 @@ export default function App() {
               {/* Introduction Title */}
               <div className="text-center">
                 <span className="bg-rose-900/50 border border-rose-500 text-rose-300 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest">
-                  デマ論破パート：タカシを説得せよ
+                  {currentChapterData.deduction.title}
                 </span>
                 <p className="text-neutral-400 text-xs mt-2">
-                  タカシの誤った主張を1つクリックし、それと「完全に矛盾する証拠付箋」を突きつけて冷静にさせましょう！
+                  {currentChapterData.deduction.opponentName}の誤った主張を1つクリックし、それと「完全に矛盾する証拠付箋」を突きつけて冷静にさせましょう！
                 </p>
               </div>
 
@@ -1025,53 +1296,39 @@ export default function App() {
                       <div className="flex gap-3 items-center mb-4 border-b border-neutral-800 pb-2">
                         <div className="w-12 h-12 rounded-lg bg-neutral-900 overflow-hidden border-2 border-neutral-700 relative">
                           <img 
-                            src={AVATAR_IMAGES.takashi} 
-                            alt="タカシ" 
+                            src={AVATAR_IMAGES[currentChapterData.deduction.opponentAvatar as keyof typeof AVATAR_IMAGES]} 
+                            alt={currentChapterData.deduction.opponentName} 
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover pixelated scale-110 object-top"
                           />
                         </div>
                         <div>
-                          <h4 className="font-bold text-sm text-neutral-200">タカシ (クラスメイト)</h4>
-                          <span className="text-[10px] text-rose-400 bg-rose-950/40 px-2 py-0.5 border border-rose-900/60 font-mono">デマ信じ込み状態</span>
+                          <h4 className="font-bold text-sm text-neutral-200">{currentChapterData.deduction.opponentName}</h4>
+                          <span className="text-[10px] text-rose-400 bg-rose-950/40 px-2 py-0.5 border border-rose-900/60 font-mono">{currentChapterData.deduction.opponentStatus}</span>
                         </div>
                       </div>
 
                       {/* OPPONENT CLAIMS (STEP 1 Selection) */}
                       <div className="flex flex-col gap-3">
-                        <button
-                          onClick={() => {
-                            sounds.playClick();
-                            setSelectedClaimId("claim_1");
-                          }}
-                          className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
-                            selectedClaimId === "claim_1"
-                              ? "bg-rose-950/40 border-rose-500 shadow-rose-900/40 shadow-lg text-white"
-                              : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:border-neutral-700"
-                          }`}
-                        >
-                          <div className="text-[10px] font-mono text-rose-500 mb-1">【主張A】</div>
-                          <p className="text-base font-bold leading-relaxed">
-                            「ミカちゃんが紹介してるんだから、科学的に効果が証明された安全な果物に決まってるだろ！」
-                          </p>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            sounds.playClick();
-                            setSelectedClaimId("claim_2");
-                          }}
-                          className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
-                            selectedClaimId === "claim_2"
-                              ? "bg-rose-950/40 border-rose-500 shadow-rose-900/40 shadow-lg text-white"
-                              : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:border-neutral-700"
-                          }`}
-                        >
-                          <div className="text-[10px] font-mono text-rose-500 mb-1">【主張B】</div>
-                          <p className="text-base font-bold leading-relaxed">
-                            「早く買わないと売り切れちゃうよ！みんなも買ってるし！」
-                          </p>
-                        </button>
+                        {currentChapterData.deduction.claims.map((claim) => (
+                          <button
+                            key={claim.id}
+                            onClick={() => {
+                              sounds.playClick();
+                              setSelectedClaimId(claim.id);
+                            }}
+                            className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                              selectedClaimId === claim.id
+                                ? "bg-rose-950/40 border-rose-500 shadow-rose-900/40 shadow-lg text-white"
+                                : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:border-neutral-700"
+                            }`}
+                          >
+                            <div className="text-[10px] font-mono text-rose-500 mb-1">【{claim.label}】</div>
+                            <p className="text-base font-bold leading-relaxed">
+                              {claim.text}
+                            </p>
+                          </button>
+                        ))}
                       </div>
                     </div>
 
@@ -1148,9 +1405,9 @@ export default function App() {
                         証拠を突きつける！
                       </button>
                     </div>
+
                   </div>
                 </div>
-
               </div>
             </motion.div>
           )}
@@ -1171,9 +1428,9 @@ export default function App() {
               <div className="flex items-center gap-3 border-b-4 border-emerald-600 pb-4">
                 <CheckCircle className="w-10 h-10 text-emerald-500 shrink-0" />
                 <div>
-                  <h2 className="text-2xl font-bold text-emerald-400">第1章ファクトチェック完了！</h2>
+                  <h2 className="text-2xl font-bold text-emerald-400">{currentChapterData.explanation.title}</h2>
                   <p className="text-xs text-neutral-400">
-                    科学的根拠（臨床データ）のないヘルスケアデマの矛盾を見事に暴き、友達を救いました！
+                    {currentChapterData.explanation.subtitle}
                   </p>
                 </div>
               </div>
@@ -1185,11 +1442,10 @@ export default function App() {
                 <div className="bg-neutral-900 p-4 rounded-lg border border-neutral-800">
                   <h3 className="text-emerald-400 font-bold text-base mb-1.5 flex items-center gap-2">
                     <span className="w-1.5 h-4 bg-emerald-500 inline-block" />
-                    実在する類似のデマ・フェイク事例モデル
+                    {currentChapterData.explanation.modelTitle}
                   </h3>
                   <p className="text-neutral-300 text-xs md:text-sm">
-                    過去、SNSやブログ上で「〇〇という食材を食べるだけで劇的に痩せる」「病気が完治する」といった広告や偽ニュースが数多く流行しました。
-                    特にインフルエンサーの信頼度を悪用し、実態のないサプリメントや果物を高額で販売するアフィリエイト詐欺や誇大広告は、日常的に頻発しています。
+                    {currentChapterData.explanation.modelText}
                   </p>
                 </div>
 
@@ -1197,23 +1453,23 @@ export default function App() {
                 <div className="bg-neutral-900 p-4 rounded-lg border border-neutral-800">
                   <h3 className="text-emerald-400 font-bold text-base mb-1.5 flex items-center gap-2">
                     <span className="w-1.5 h-4 bg-emerald-500 inline-block" />
-                    日常生活でだまされないためのファクトチェック技術
+                    {currentChapterData.explanation.skillsTitle}
                   </h3>
                   <ul className="list-decimal pl-5 space-y-2 text-xs md:text-sm text-neutral-300">
-                    <li>
-                      <strong className="text-white">情報の発信元（一次データ）を特定する:</strong> 
-                      インフルエンサーの言葉を鵜呑みにせず、大学の研究機関や医師会、または厚生労働省などの公的な一次ソースで調べ直す。
-                    </li>
-                    <li>
-                      <strong className="text-white">URLの「ドメイン（末尾）」に注目する:</strong> 
-                      日本の政府機関や公的機関は <code className="bg-neutral-950 text-rose-400 px-1 rounded font-mono font-bold">.go.jp</code>、
-                      大学・研究機関は <code className="bg-neutral-950 text-rose-400 px-1 rounded font-mono font-bold">.ac.jp</code> という専用のドメインを使用しています。
-                      これらが含まれるURLは非常に高い信頼性を持っています。
-                    </li>
-                    <li>
-                      <strong className="text-white">シェアする前に「立ち止まる」:</strong> 
-                      「面白い」「みんなに教えたい」と感情が刺激された時ほど、それが悪質なデマ発信者を儲けさせる手助け（アクセス数稼ぎ）になっていないか、一度考える癖をつけましょう。
-                    </li>
+                    {currentChapterData.explanation.skills.map((skill, index) => {
+                      const colonIndex = skill.indexOf(":");
+                      if (colonIndex !== -1) {
+                        const boldPart = skill.slice(0, colonIndex + 1);
+                        const restPart = skill.slice(colonIndex + 1);
+                        return (
+                          <li key={index}>
+                            <strong className="text-white">{boldPart}</strong>
+                            {restPart}
+                          </li>
+                        );
+                      }
+                      return <li key={index}>{skill}</li>;
+                    })}
                   </ul>
                 </div>
 
@@ -1261,229 +1517,294 @@ export default function App() {
                 </div>
 
                 <p className="text-xs text-neutral-500 leading-relaxed">
-                  本デモは、メディアリテラシー向上ゲーム「FactChecker」のコアシステムおよび第1章（ヘルスケアデマ）をシミュレートしたものです。
-                  この仕様書とプロトタイプを元に、次回のフルビルドへと進みます。
+                  本デモは、メディアリテラシー向上ゲーム「FactChecker」のコアシステムおよび第1章（青い果実デモ騒動）が仕様書通りに実装されているかを確認するためのプロトタイプです。
                 </p>
-              </div>
 
-              <button
-                onClick={() => {
-                  sounds.playClick();
-                  setGameState("STORY_OPENING");
-                  setCurrentDialogueIndex(0);
-                  setGatheredEvidences([]);
-                  setOpenedPages([]);
-                  setSearchQuery("");
-                  setLives(3);
-                  setIsDeductionTriggered(false);
-                }}
-                className="retro-border bg-neutral-800 hover:bg-neutral-700 text-neutral-200 py-3 font-bold transition flex items-center justify-center gap-2"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>タイトルへ（もう一度遊ぶ）</span>
-              </button>
+                <div className="flex flex-col gap-3 mt-6">
+                  <button
+                    onClick={() => {
+                      sounds.playClick();
+                      // Reset Game to main menu
+                      setGameState("TITLE");
+                      setGatheredEvidences([]);
+                      setOpenedPages([]);
+                      setCurrentDialogueIndex(0);
+                      setIsDeductionTriggered(false);
+                    }}
+                    className="retro-border bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 text-sm tracking-widest transition-all"
+                  >
+                    タイトルメニューに戻る
+                  </button>
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-      </main>
+        {/* ========================================================
+            9. EVIDENCE BOARD OVERLAY (MANDATE: BIGGER & FULL SCREEN FOCUS)
+            ======================================================== */}
+        <AnimatePresence>
+          {showEvidenceBoardOverlay && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-neutral-950/95 flex justify-center items-center z-50 p-4 md:p-8 backdrop-blur-md"
+            >
+              <motion.div
+                initial={{ scale: 0.95, y: 15 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 15 }}
+                className="bg-neutral-900 retro-border w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl relative overflow-hidden"
+              >
+                {/* Board Header */}
+                <div className="bg-amber-950 p-4 border-b-2 border-amber-900 flex justify-between items-center shrink-0">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-amber-400" />
+                    <h3 className="font-bold text-lg text-amber-200">現在の証拠検証ボード</h3>
+                  </div>
+                  <button
+                    onClick={() => {
+                      sounds.playClick();
+                      setShowEvidenceBoardOverlay(false);
+                    }}
+                    className="p-1 hover:bg-amber-900/50 rounded text-amber-400 hover:text-amber-200 transition"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
 
-      {/* ========================================================
-          6. EVIDENCE BOARD OVERLAY (SPEC MANDATE)
+                {/* Board Grid Area */}
+                <div className="flex-1 bg-neutral-950 p-6 relative overflow-auto pixel-bg flex items-center justify-center min-h-[450px]">
+                  
+                  {/* Fixed Canvas Container: Guarantees pin positioning and SVG line alignment never drift */}
+                  <div className="relative w-[900px] h-[450px] shrink-0 z-10">
+                    
+                    {/* SVG Layer for Drawing Connections - Inside the scoped container */}
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                      {(chapterConnections[currentChapter] || []).map((conn, idx) => {
+                        const hasEvFrom = currentChapterData.evidenceList[conn.fromIndex] && 
+                          gatheredEvidences.some(e => e.id === currentChapterData.evidenceList[conn.fromIndex].id);
+                        const hasEvTo = currentChapterData.evidenceList[conn.toIndex] && 
+                          gatheredEvidences.some(e => e.id === currentChapterData.evidenceList[conn.toIndex].id);
+                        
+                        if (hasEvFrom && hasEvTo) {
+                          return (
+                            <g key={idx}>
+                              <path 
+                                d={conn.pathD} 
+                                fill="none" 
+                                stroke={conn.strokeColor} 
+                                strokeWidth="4" 
+                                strokeDasharray="6,4"
+                              />
+                              <foreignObject x={conn.labelX} y={conn.labelY} width="100" height="36">
+                                <div className={`${conn.colorClass} border px-2 py-0.5 rounded text-[10px] font-bold text-center font-mono shadow-md`}>
+                                  {conn.label}
+                                </div>
+                              </foreignObject>
+                            </g>
+                          );
+                        }
+                        return null;
+                      })}
+                    </svg>
+
+                    {/* STICKY 1: ev0 (Absolutely Pinned) */}
+                    <div className="absolute left-[50px] top-[30px] w-[260px] h-[160px] z-10">
+                      {ev0 ? (
+                        gatheredEvidences.some(e => e.id === ev0.id) ? (
+                          <motion.div
+                            initial={{ scale: 0, rotate: -15 }}
+                            animate={{ scale: 1, rotate: -2 }}
+                            className="w-full h-full bg-amber-100 border-2 border-amber-300 p-4 rounded shadow-xl text-neutral-800 flex flex-col justify-between"
+                          >
+                            <div className="w-4 h-4 bg-rose-600 rounded-full border border-neutral-900 absolute -top-2 left-1/2 -translate-x-1/2 shadow-inner" /> {/* Red Pin */}
+                            <div>
+                              <span className="text-[9px] font-bold bg-amber-200 px-1.5 py-0.5 rounded text-amber-800">
+                                証拠A
+                              </span>
+                              <h4 className="font-bold text-sm mt-1 border-b border-amber-200 pb-1 truncate">
+                                {ev0.title}
+                              </h4>
+                              <p className="text-[11px] leading-relaxed mt-1 text-neutral-700 line-clamp-4">
+                                {ev0.content}
+                              </p>
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <div className="w-full h-full border-2 border-dashed border-neutral-600 rounded flex flex-col items-center justify-center p-4 text-center text-xs text-neutral-500 bg-neutral-900/50">
+                            <span>未発見の証拠A</span>
+                            <span className="text-[10px] text-neutral-600 mt-1">({ev0.title})</span>
+                          </div>
+                        )
+                      ) : null}
+                    </div>
+
+                    {/* STICKY 2: ev1 (Absolutely Pinned) */}
+                    <div className="absolute left-[590px] top-[30px] w-[260px] h-[160px] z-10">
+                      {ev1 ? (
+                        gatheredEvidences.some(e => e.id === ev1.id) ? (
+                          <motion.div
+                            initial={{ scale: 0, rotate: 15 }}
+                            animate={{ scale: 1, rotate: 3 }}
+                            className="w-full h-full bg-rose-100 border-2 border-rose-300 p-4 rounded shadow-xl text-neutral-800 flex flex-col justify-between"
+                          >
+                            <div className="w-4 h-4 bg-sky-600 rounded-full border border-neutral-900 absolute -top-2 left-1/2 -translate-x-1/2 shadow-inner" /> {/* Blue Pin */}
+                            <div>
+                              <span className="text-[9px] font-bold bg-rose-200 px-1.5 py-0.5 rounded text-rose-800">
+                                証拠B
+                              </span>
+                              <h4 className="font-bold text-sm mt-1 border-b border-rose-200 pb-1 truncate">
+                                {ev1.title}
+                              </h4>
+                              <p className="text-[11px] leading-relaxed mt-1 text-neutral-700 line-clamp-4">
+                                {ev1.content}
+                              </p>
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <div className="w-full h-full border-2 border-dashed border-neutral-600 rounded flex flex-col items-center justify-center p-4 text-center text-xs text-neutral-500 bg-neutral-900/50">
+                            <span>未発見の証拠B</span>
+                            <span className="text-[10px] text-neutral-600 mt-1">({ev1.title})</span>
+                          </div>
+                        )
+                      ) : null}
+                    </div>
+
+                    {/* STICKY 3: ev2 (Absolutely Pinned) */}
+                    <div className="absolute left-[320px] top-[250px] w-[260px] h-[160px] z-10">
+                      {ev2 ? (
+                        gatheredEvidences.some(e => e.id === ev2.id) ? (
+                          <motion.div
+                            initial={{ scale: 0, rotate: -5 }}
+                            animate={{ scale: 1, rotate: 1 }}
+                            className="w-full h-full bg-emerald-100 border-2 border-emerald-300 p-4 rounded shadow-xl text-neutral-800 flex flex-col justify-between"
+                          >
+                            <div className="w-4 h-4 bg-emerald-600 rounded-full border border-neutral-900 absolute -top-2 left-1/2 -translate-x-1/2 shadow-inner" /> {/* Green Pin */}
+                            <div>
+                              <span className="text-[9px] font-bold bg-emerald-200 px-1.5 py-0.5 rounded text-emerald-800">
+                                証拠C
+                              </span>
+                              <h4 className="font-bold text-sm mt-1 border-b border-emerald-200 pb-1 truncate">
+                                {ev2.title}
+                              </h4>
+                              <p className="text-[11px] leading-relaxed mt-1 text-neutral-700 line-clamp-4">
+                                {ev2.content}
+                              </p>
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <div className="w-full h-full border-2 border-dashed border-neutral-600 rounded flex flex-col items-center justify-center p-4 text-center text-xs text-neutral-500 bg-neutral-900/50">
+                            <span>未発見の証拠C</span>
+                            <span className="text-[10px] text-neutral-600 mt-1">({ev2.title})</span>
+                          </div>
+                        )
+                      ) : null}
+                    </div>
+
+                  </div>
+
+                </div>
+
+                {/* Bottom bar of Board */}
+                <div className="bg-amber-950 p-4 text-center text-xs text-amber-200 border-t-2 border-amber-900 shrink-0">
+                  証拠同士を繋ぐ実線の関係性を整理して、対決時の論破ロジックを頭の中で組み立てましょう。
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ========================================================
+          8. EVIDENCE ACQUISITION DIALOGUE OVERLAY
           ======================================================== */}
       <AnimatePresence>
-        {showEvidenceBoardOverlay && (
+        {activeEvidenceDialogue && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            // SPEC RULE: 灰色系のフィルター(バックドロップ)で、裏の画面の操作を完全に遮断
-            className="fixed inset-0 bg-neutral-950/85 backdrop-blur-[3px] backdrop-grayscale flex justify-center items-center z-50 p-4"
-            onClick={() => setShowEvidenceBoardOverlay(false)} // Click outside to close safely
+            className="fixed inset-0 bg-neutral-950/95 flex justify-center items-center z-50 p-2 sm:p-4 md:p-8 backdrop-blur-md"
           >
             <motion.div
-              initial={{ scale: 0.9, y: 20 }}
+              initial={{ scale: 0.95, y: 15 }}
               animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-amber-950/20 border-4 border-amber-900 w-full max-w-4xl retro-border rounded-xl shadow-2xl relative flex flex-col h-[550px] overflow-hidden"
-              onClick={(e) => e.stopPropagation()} // Stop propagation so clicking board doesn't close it
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-neutral-900 retro-border w-[96vw] max-w-7xl h-[92vh] p-5 md:p-8 shadow-2xl flex flex-col gap-5 relative overflow-hidden justify-between"
             >
-              
-              {/* Header Corkboard bar */}
-              <div className="bg-amber-950 text-amber-100 p-4 flex justify-between items-center border-b-2 border-amber-900">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-amber-400" />
-                  <h3 className="font-bold text-lg tracking-wide">証拠整理ボード (Evidence Board)</h3>
+              {/* Header section (strictly avoids overlap) */}
+              <div className="flex justify-between items-center border-b-2 border-neutral-800 pb-3.5 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <BookOpen className="w-5 h-5 md:w-6 h-6 text-amber-400 shrink-0" />
+                  <span className="font-bold text-base md:text-lg text-neutral-200 truncate">検証ボード（証拠詳細対話）</span>
                 </div>
-                
-                <button
-                  onClick={() => {
-                    sounds.playClick();
-                    setShowEvidenceBoardOverlay(false);
-                  }}
-                  className="bg-amber-900 hover:bg-amber-800 p-1 rounded text-amber-200 transition"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+                <span className="text-xs md:text-sm text-amber-400 font-bold tracking-widest bg-amber-950/70 px-3.5 py-1.5 rounded border border-amber-800 shrink-0 whitespace-nowrap">
+                  証拠獲得！
+                </span>
               </div>
 
-              {/* Corkboard Workspace (rendered via wood-style retro pixel pattern) */}
+              {/* Characters Visual Stage - Magnified to fill vertical space beautifully */}
+              <div className="flex-1 bg-neutral-950 rounded-lg border-2 border-neutral-800 flex justify-around items-end p-6 relative overflow-hidden pixel-bg min-h-[260px] lg:min-h-[380px]">
+                {/* Background grid label */}
+                <div className="absolute top-2 left-2 text-[10px] text-neutral-600 font-mono select-none">
+                  STAGE AREA
+                </div>
+
+                {/* Speaker indicator & Characters layout */}
+                <div className="flex justify-center items-end w-full h-full gap-10 sm:gap-20 md:gap-32 pb-4 z-10">
+                  {/* Ren */}
+                  <div className={`flex flex-col items-center transition-all duration-300 ${activeEvidenceDialogue.lines[activeEvidenceDialogue.currentIndex]?.avatar === "ren" ? "scale-105 opacity-100" : "opacity-45 scale-95"}`}>
+                    <div className="w-28 h-36 sm:w-40 sm:h-52 md:w-52 md:h-64 lg:w-60 lg:h-76 border-2 border-neutral-700 rounded bg-neutral-900 overflow-hidden relative shadow-2xl">
+                      <img 
+                        src={AVATAR_IMAGES.ren} 
+                        alt="レン" 
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover pixelated scale-110 object-top"
+                      />
+                    </div>
+                    <span className="mt-3 text-xs sm:text-sm bg-blue-900 px-3.5 py-1 rounded border border-blue-600 font-bold text-blue-200">
+                      レン
+                    </span>
+                  </div>
+
+                  {/* Aoi */}
+                  <div className={`flex flex-col items-center transition-all duration-300 ${activeEvidenceDialogue.lines[activeEvidenceDialogue.currentIndex]?.avatar === "aoi" ? "scale-105 opacity-100" : "opacity-45 scale-95"}`}>
+                    <div className="w-28 h-36 sm:w-40 sm:h-52 md:w-52 md:h-64 lg:w-60 lg:h-76 border-2 border-neutral-700 rounded bg-neutral-900 overflow-hidden relative shadow-2xl">
+                      <img 
+                        src={AVATAR_IMAGES.aoi} 
+                        alt="アオイ" 
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover pixelated scale-115 object-bottom"
+                      />
+                    </div>
+                    <span className="mt-3 text-xs sm:text-sm bg-rose-900 px-3.5 py-1 rounded border border-rose-600 font-bold text-rose-200">
+                      アオイ
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Speech bubble */}
               <div 
-                className="flex-1 p-6 relative overflow-auto"
-                style={{
-                  backgroundColor: "#5c3a21",
-                  backgroundImage: "radial-gradient(#4d2e1a 15%, transparent 15%)",
-                  backgroundSize: "16px 16px"
-                }}
+                onClick={nextEvidenceDialogue}
+                className="retro-border bg-neutral-950 p-5 md:p-6 cursor-pointer hover:bg-neutral-900 transition-all flex flex-col min-h-[110px] md:min-h-[140px] justify-between relative group shrink-0"
               >
-                
-                {/* SVG Connections Canvas for Relationship lines */}
-                <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
-                  {/* Draw connection if we have Mika and Medical news */}
-                  {gatheredEvidences.some(e => e.id === "evidence_mika") && 
-                   gatheredEvidences.some(e => e.id === "evidence_health") && (
-                    <g>
-                      {/* Red line representing CONTRADICTION */}
-                      <path 
-                        d="M 220 200 Q 420 180 620 200" 
-                        fill="none" 
-                        stroke="#ef4444" 
-                        strokeWidth="5" 
-                        strokeDasharray="8,6"
-                        className="animate-[dash_2s_linear_infinite]"
-                      />
-                      {/* Label for relation */}
-                      <foreignObject x="350" y="150" width="140" height="36">
-                        <div className="bg-rose-600 text-white border-2 border-rose-400 px-2 py-0.5 rounded text-xs font-bold text-center font-mono shadow">
-                          ⚡ 矛盾
-                        </div>
-                      </foreignObject>
-                    </g>
-                  )}
-
-                  {/* Draw connection if we have Mika and National Center */}
-                  {gatheredEvidences.some(e => e.id === "evidence_mika") && 
-                   gatheredEvidences.some(e => e.id === "evidence_national") && (
-                    <g>
-                      {/* Blue/Red line representing Warning/Reference */}
-                      <path 
-                        d="M 220 200 Q 420 380 620 350" 
-                        fill="none" 
-                        stroke="#ef4444" 
-                        strokeWidth="4" 
-                        strokeDasharray="6,4"
-                      />
-                      <foreignObject x="370" y="270" width="100" height="36">
-                        <div className="bg-rose-600 text-white border border-rose-300 px-2 py-0.5 rounded text-[10px] font-bold text-center font-mono">
-                          ⚡ 矛盾
-                        </div>
-                      </foreignObject>
-                    </g>
-                  )}
-
-                  {/* Draw connection if we have Medical News and National Center */}
-                  {gatheredEvidences.some(e => e.id === "evidence_health") && 
-                   gatheredEvidences.some(e => e.id === "evidence_national") && (
-                    <g>
-                      {/* Green line representing SUPPORT/CORROBORATION */}
-                      <path 
-                        d="M 620 200 L 620 350" 
-                        fill="none" 
-                        stroke="#10b981" 
-                        strokeWidth="4" 
-                        strokeDasharray="6,4"
-                      />
-                      <foreignObject x="580" y="260" width="100" height="36">
-                        <div className="bg-emerald-600 text-white border border-emerald-300 px-2 py-0.5 rounded text-[10px] font-bold text-center font-mono">
-                          ✓ 裏付け
-                        </div>
-                      </foreignObject>
-                    </g>
-                  )}
-                </svg>
-
-                {/* PLACED STICKY NOTES WITH ANIMATION (MANDATE: Pinned Animation) */}
-                <div className="relative w-full h-full min-h-[400px] z-10">
-                  
-                  {/* STICKY 1: MIKA BLOG */}
-                  {gatheredEvidences.some(e => e.id === "evidence_mika") ? (
-                    <motion.div
-                      initial={{ scale: 0, rotate: -15 }}
-                      animate={{ scale: 1, rotate: -2 }}
-                      className="absolute left-4 top-12 w-64 bg-amber-100 border-2 border-amber-300 p-4 rounded shadow-xl text-neutral-800"
-                    >
-                      <div className="w-4 h-4 bg-rose-600 rounded-full border border-neutral-900 absolute -top-2 left-1/2 -translate-x-1/2 shadow-inner" /> {/* Red Pin */}
-                      <span className="text-[9px] font-bold bg-amber-200 px-1.5 py-0.5 rounded text-amber-800">
-                        証拠A
-                      </span>
-                      <h4 className="font-bold text-xs mt-1 border-b border-amber-200 pb-1">
-                        ミカのダイエットブログ
-                      </h4>
-                      <p className="text-[11px] leading-relaxed mt-1 text-neutral-700">
-                        「青い果物は食べるだけで1週間で10kg痩せる！臨床データは準備中、副作用はゼロ！」と高額な購入リンクを掲載。
-                      </p>
-                    </motion.div>
-                  ) : (
-                    <div className="absolute left-4 top-12 w-64 h-32 border-2 border-dashed border-neutral-600 rounded flex items-center justify-center text-xs text-neutral-500">
-                      未発見の証拠A
-                    </div>
-                  )}
-
-                  {/* STICKY 2: MEDICAL NEWS */}
-                  {gatheredEvidences.some(e => e.id === "evidence_health") ? (
-                    <motion.div
-                      initial={{ scale: 0, rotate: 15 }}
-                      animate={{ scale: 1, rotate: 3 }}
-                      className="absolute right-4 top-12 w-64 bg-rose-100 border-2 border-rose-300 p-4 rounded shadow-xl text-neutral-800"
-                    >
-                      <div className="w-4 h-4 bg-sky-600 rounded-full border border-neutral-900 absolute -top-2 left-1/2 -translate-x-1/2 shadow-inner" /> {/* Blue Pin */}
-                      <span className="text-[9px] font-bold bg-rose-200 px-1.5 py-0.5 rounded text-rose-800">
-                        証拠B
-                      </span>
-                      <h4 className="font-bold text-xs mt-1 border-b border-rose-200 pb-1">
-                        医療ニュース：ヘルスファクト
-                      </h4>
-                      <p className="text-[11px] leading-relaxed mt-1 text-neutral-700">
-                        「劇的減量を裏付ける科学的根拠（臨床データ）はなく、多量摂取は強い下痢などの副作用を引き起こす」と警告。
-                      </p>
-                    </motion.div>
-                  ) : (
-                    <div className="absolute right-4 top-12 w-64 h-32 border-2 border-dashed border-neutral-600 rounded flex items-center justify-center text-xs text-neutral-500">
-                      未発見の証拠B
-                    </div>
-                  )}
-
-                  {/* STICKY 3: NATIONAL COKUSEN */}
-                  {gatheredEvidences.some(e => e.id === "evidence_national") ? (
-                    <motion.div
-                      initial={{ scale: 0, rotate: -5 }}
-                      animate={{ scale: 1, rotate: 1 }}
-                      className="absolute left-1/3 bottom-4 w-72 bg-emerald-100 border-2 border-emerald-300 p-4 rounded shadow-xl text-neutral-800"
-                    >
-                      <div className="w-4 h-4 bg-emerald-600 rounded-full border border-neutral-900 absolute -top-2 left-1/2 -translate-x-1/2 shadow-inner" /> {/* Green Pin */}
-                      <span className="text-[9px] font-bold bg-emerald-200 px-1.5 py-0.5 rounded text-emerald-800">
-                        証拠C
-                      </span>
-                      <h4 className="font-bold text-xs mt-1 border-b border-emerald-200 pb-1">
-                        国民生活安全センター (.go.jp)
-                      </h4>
-                      <p className="text-[11px] leading-relaxed mt-1 text-neutral-700">
-                        「臨床データのない誇大広告によるトラブル、強い副作用（下痢）を伴う健康トラブルの相談が急増中」と公的に警告。
-                      </p>
-                    </motion.div>
-                  ) : (
-                    <div className="absolute left-1/3 bottom-4 w-72 h-32 border-2 border-dashed border-neutral-600 rounded flex items-center justify-center text-xs text-neutral-500">
-                      未発見の証拠C
-                    </div>
-                  )}
-
+                <div>
+                  <div className="text-amber-500 text-xs md:text-sm lg:text-base font-bold mb-2 select-none">
+                    <span>【 {activeEvidenceDialogue.lines[activeEvidenceDialogue.currentIndex]?.char} 】</span>
+                  </div>
+                  <p className="text-sm md:text-base lg:text-lg leading-relaxed text-neutral-100 tracking-wide font-medium whitespace-pre-wrap break-words">
+                    {evidenceTypedText}
+                    {isEvidenceTyping && <span className="inline-block w-1.5 h-3 bg-neutral-400 ml-1 animate-pulse" />}
+                  </p>
                 </div>
 
-              </div>
-
-              {/* Bottom bar of Board */}
-              <div className="bg-amber-950 p-4 text-center text-xs text-amber-200 border-t-2 border-amber-900">
-                証拠同士を繋ぐ実線の関係性を整理して、対決時の論破ロジックを頭の中で組み立てましょう。
+                <div className="self-end flex items-center gap-1.5 text-[10px] md:text-xs lg:text-sm text-neutral-500 group-hover:text-amber-400 transition-colors mt-4">
+                  <span>{isEvidenceTyping ? "スキップ" : activeEvidenceDialogue.currentIndex < activeEvidenceDialogue.lines.length - 1 ? "クリックで次へ" : "閉じる"}</span>
+                  <ArrowRight className="w-3.5 h-3.5 md:w-4 md:h-4 animate-bounce" />
+                </div>
               </div>
 
             </motion.div>
@@ -1543,93 +1864,9 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* ========================================================
-          8. EVIDENCE ACQUISITION DIALOGUE OVERLAY
-          ======================================================== */}
-      <AnimatePresence>
-        {activeEvidenceDialogue && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-neutral-950/85 flex justify-center items-center z-50 p-4 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 15 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 15 }}
-              className="bg-neutral-900 retro-border w-full max-w-xl p-5 shadow-2xl flex flex-col gap-5 relative overflow-hidden"
-            >
-              {/* Evidence header info */}
-              <div className="absolute top-2 right-3 text-[10px] text-amber-400 font-bold tracking-widest bg-amber-950/50 px-2 py-0.5 rounded border border-amber-800">
-                証拠獲得！
-              </div>
 
-              {/* Characters Visual Stage */}
-              <div className="h-40 bg-neutral-950 rounded-lg border-2 border-neutral-800 flex justify-around items-end p-2 relative overflow-hidden pixel-bg">
-                <div className="absolute top-2 left-2 text-[10px] text-neutral-500 font-mono">
-                  検証ボード
-                </div>
 
-                {/* Speaker indicator & Characters layout */}
-                <div className="flex justify-center items-end w-full h-full gap-8">
-                  {/* Ren */}
-                  <div className={`flex flex-col items-center transition-all duration-300 ${activeEvidenceDialogue.lines[activeEvidenceDialogue.currentIndex]?.avatar === "ren" ? "scale-105 opacity-100" : "opacity-40 scale-95"}`}>
-                    <div className="w-16 h-20 border-2 border-neutral-700 rounded bg-neutral-900 overflow-hidden relative">
-                      <img 
-                        src={AVATAR_IMAGES.ren} 
-                        alt="レン" 
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover pixelated scale-110 object-top"
-                      />
-                    </div>
-                    <span className="mt-1 text-[10px] bg-blue-900 px-2 py-0.5 rounded border border-blue-600 font-bold text-blue-200">
-                      レン
-                    </span>
-                  </div>
-
-                  {/* Aoi */}
-                  <div className={`flex flex-col items-center transition-all duration-300 ${activeEvidenceDialogue.lines[activeEvidenceDialogue.currentIndex]?.avatar === "aoi" ? "scale-105 opacity-100" : "opacity-40 scale-95"}`}>
-                    <div className="w-16 h-20 border-2 border-neutral-700 rounded bg-neutral-900 overflow-hidden relative">
-                      <img 
-                        src={AVATAR_IMAGES.aoi} 
-                        alt="アオイ" 
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover pixelated scale-115 object-bottom"
-                      />
-                    </div>
-                    <span className="mt-1 text-[10px] bg-rose-900 px-2 py-0.5 rounded border border-rose-600 font-bold text-rose-200">
-                      アオイ
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Speech bubble */}
-              <div 
-                onClick={nextEvidenceDialogue}
-                className="retro-border bg-neutral-950 p-4 cursor-pointer hover:bg-neutral-900 transition-all flex flex-col min-h-[100px] justify-between relative group"
-              >
-                <div>
-                  <div className="text-amber-500 text-xs font-bold mb-1 select-none">
-                    <span>【 {activeEvidenceDialogue.lines[activeEvidenceDialogue.currentIndex]?.char} 】</span>
-                  </div>
-                  <p className="text-sm leading-relaxed text-neutral-100 tracking-wide font-medium whitespace-pre-wrap break-words">
-                    {evidenceTypedText}
-                    {isEvidenceTyping && <span className="inline-block w-1.5 h-3 bg-neutral-400 ml-1 animate-pulse" />}
-                  </p>
-                </div>
-
-                <div className="self-end flex items-center gap-1 text-[10px] text-neutral-500 group-hover:text-amber-400 transition-colors mt-3">
-                  <span>{isEvidenceTyping ? "スキップ" : activeEvidenceDialogue.currentIndex < activeEvidenceDialogue.lines.length - 1 ? "クリックで次へ" : "閉じる"}</span>
-                  <ArrowRight className="w-3 h-3 animate-bounce" />
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+      </main>
     </div>
   );
 }
