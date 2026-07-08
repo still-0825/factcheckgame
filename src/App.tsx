@@ -4,24 +4,149 @@ import { Search, BookOpen, AlertTriangle, CheckCircle, HelpCircle, ArrowRight, R
 import { chaptersData, Dialogue, Evidence, WebPage } from "./data/chaptersData";
 
 // Web Audio API Retro Synth for 16-bit sound effects
+// BGMのWAVファイルのURLを解決
+const bgmUrl = new URL("../assets/bgm/bgm.wav", import.meta.url).href;
+
 class SoundEngine {
   private ctx: AudioContext | null = null;
-  public muted: boolean = false;
+  public muted: boolean = true; // Default to muted for auto-play policy and clean entry
+
+  // BGM再生用の状態
+  private isBgmPlaying: boolean = false;
+  private bgmBuffer: AudioBuffer | null = null;
+  private bgmSource: AudioBufferSourceNode | null = null;
+  private isLoadingBgm: boolean = false;
+
+  // 音響制御ノード
+  private masterGain: GainNode | null = null;
+  private bgmGain: GainNode | null = null;
+  private seGain: GainNode | null = null;
 
   private initCtx() {
-    if (!this.ctx) {
-      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    if (this.ctx.state === "suspended") {
-      this.ctx.resume();
+    if (this.ctx) return;
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.ctx = new AudioContextClass();
+      
+      // マスターゲイン (十分に聞こえるように音量を引き上げ)
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.setValueAtTime(this.muted ? 0 : 1.0, this.ctx.currentTime);
+      this.masterGain.connect(this.ctx.destination);
+
+      // BGM用ゲイン (ユーザーの要望に応じて音量を増幅)
+      this.bgmGain = this.ctx.createGain();
+      this.bgmGain.gain.setValueAtTime(0.85, this.ctx.currentTime);
+      this.bgmGain.connect(this.masterGain);
+
+      // SE用ゲイン
+      this.seGain = this.ctx.createGain();
+      this.seGain.gain.setValueAtTime(0.8, this.ctx.currentTime);
+      this.seGain.connect(this.masterGain);
+
+      // BGMファイルをロード
+      this.loadBgmFile();
+    } catch (e) {
+      console.warn("Audio Context initialization failed:", e);
     }
   }
 
+  private async loadBgmFile() {
+    if (this.bgmBuffer || this.isLoadingBgm || !this.ctx) return;
+    this.isLoadingBgm = true;
+    try {
+      const response = await fetch(bgmUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      this.bgmBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+      this.isLoadingBgm = false;
+      
+      // すでに再生要求が来ている場合は再生開始
+      if (this.isBgmPlaying) {
+        this.playLoadedBgm();
+      }
+    } catch (e) {
+      console.error("BGM file load failed:", e);
+      this.isLoadingBgm = false;
+    }
+  }
+
+  // BGMの開始・停止とミュート状態の同期
+  public updateMuteState(muted: boolean) {
+    this.muted = muted;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume();
+    }
+
+    if (this.muted) {
+      this.stopBgm();
+      if (this.masterGain) {
+        this.masterGain.gain.setValueAtTime(0, this.ctx.currentTime);
+      }
+    } else {
+      if (this.masterGain) {
+        this.masterGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      }
+      this.startBgm();
+    }
+  }
+
+  private startBgm() {
+    if (this.isBgmPlaying || this.muted) return;
+    this.isBgmPlaying = true;
+    
+    this.initCtx();
+    if (!this.ctx) return;
+
+    if (this.bgmBuffer) {
+      this.playLoadedBgm();
+    } else {
+      this.loadBgmFile();
+    }
+  }
+
+  private playLoadedBgm() {
+    if (!this.ctx || !this.bgmBuffer || !this.bgmGain || this.muted) return;
+    this.stopLoadedBgm();
+
+    try {
+      this.bgmSource = this.ctx.createBufferSource();
+      this.bgmSource.buffer = this.bgmBuffer;
+      this.bgmSource.loop = true;
+      this.bgmSource.connect(this.bgmGain);
+      this.bgmSource.start(0);
+    } catch (e) {
+      console.error("BGM playback failed:", e);
+    }
+  }
+
+  private stopBgm() {
+    this.isBgmPlaying = false;
+    this.stopLoadedBgm();
+  }
+
+  private stopLoadedBgm() {
+    if (this.bgmSource) {
+      try {
+        this.bgmSource.stop();
+      } catch (e) {}
+      this.bgmSource.disconnect();
+      this.bgmSource = null;
+    }
+  }
+
+  public setBgmMode(mode: "mystery" | "investigation" | "board" | "tension" | "clear") {
+    // bgm.wav のループ再生に移行したため、モード切り替え処理は無効化（インターフェース互換性維持のため残す）
+  }
+
+
+  // SE再生用メソッド
   playTone(freq: number, type: OscillatorType, duration: number, delay: number = 0) {
     if (this.muted) return;
     try {
       this.initCtx();
-      if (!this.ctx) return;
+      if (!this.ctx || !this.seGain) return;
 
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
@@ -33,7 +158,7 @@ class SoundEngine {
       gain.gain.exponentialRampToValueAtTime(0.00001, this.ctx.currentTime + delay + duration);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.seGain);
 
       osc.start(this.ctx.currentTime + delay);
       osc.stop(this.ctx.currentTime + delay + duration);
@@ -47,18 +172,15 @@ class SoundEngine {
   }
 
   playTextBeep() {
-    // Soft short blip for text typewriter sound
     this.playTone(600, "sine", 0.03);
   }
 
   playIncorrect() {
-    // Low double beep
     this.playTone(180, "sawtooth", 0.15);
     this.playTone(120, "sawtooth", 0.2, 0.12);
   }
 
   playCorrect() {
-    // Upward chime
     this.playTone(523.25, "sine", 0.1); // C5
     this.playTone(659.25, "sine", 0.1, 0.08); // E5
     this.playTone(783.99, "sine", 0.1, 0.16); // G5
@@ -66,14 +188,12 @@ class SoundEngine {
   }
 
   playEvidenceGathered() {
-    // Retro level-up sub chime
     this.playTone(440, "triangle", 0.1);
     this.playTone(554.37, "triangle", 0.1, 0.08);
     this.playTone(659.25, "triangle", 0.15, 0.16);
   }
 
   playGameSuccess() {
-    // Upward scale
     const notes = [523, 587, 659, 698, 784, 880, 987, 1046];
     notes.forEach((freq, idx) => {
       this.playTone(freq, "triangle", 0.15, idx * 0.1);
@@ -149,6 +269,26 @@ const chapterConnections: Record<number, ConnectionDef[]> = {
       label: "✓ 裏付け",
       colorClass: "bg-emerald-600 border-emerald-300 text-white",
       strokeColor: "#10b981"
+    },
+    {
+      fromIndex: 0,
+      toIndex: 2,
+      pathD: "M 180 110 L 450 330",
+      labelX: 265,
+      labelY: 202,
+      label: "⚡ 対立",
+      colorClass: "bg-rose-600 border-rose-300 text-white",
+      strokeColor: "#ef4444"
+    },
+    {
+      fromIndex: 1,
+      toIndex: 2,
+      pathD: "M 720 110 L 450 330",
+      labelX: 535,
+      labelY: 202,
+      label: "⚡ 対立",
+      colorClass: "bg-rose-600 border-rose-300 text-white",
+      strokeColor: "#ef4444"
     }
   ],
   4: [
@@ -241,7 +381,7 @@ export default function App() {
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
   const [lives, setLives] = useState(3);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true); // Default to muted for auto-play rules and smooth entry
   const [activeTab, setActiveTab] = useState<"sns" | "search">("sns");
   const [isTyping, setIsTyping] = useState(false);
   const [typedText, setTypedText] = useState("");
@@ -261,11 +401,31 @@ export default function App() {
   const typingTimerRef = useRef<any>(null);
   const browserRef = useRef<HTMLDivElement | null>(null);
 
-  // Sound Muting handler
+  // Sound Muting handler with BGM synchronization
   const toggleMute = () => {
-    sounds.muted = !sounds.muted;
-    setIsMuted(sounds.muted);
+    const nextMuted = !isMuted;
+    sounds.updateMuteState(nextMuted);
+    setIsMuted(nextMuted);
   };
+
+  // Synchronize BGM Mode transitions based on current GameState
+  useEffect(() => {
+    if (gameState === "DEDUCTION_PART") {
+      sounds.setBgmMode("tension");
+    } else if (gameState === "BROWSER_SEARCH") {
+      sounds.setBgmMode("investigation");
+    } else if (gameState === "EXPLANATION_SHEET" || gameState === "CREDITS") {
+      sounds.setBgmMode("clear");
+    } else if (
+      gameState === "STORY_OPENING" ||
+      gameState === "STORY_EPILOGUE" ||
+      gameState === "BOARD_TRIGGER_CONVERSATION"
+    ) {
+      sounds.setBgmMode("board");
+    } else {
+      sounds.setBgmMode("mystery");
+    }
+  }, [gameState]);
 
   // Dynamically computed dialogue list for the current chapter
   const currentChapterData = chaptersData[currentChapter] || chaptersData[1];
@@ -714,26 +874,42 @@ export default function App() {
                 </motion.p>
               </div>
 
-              <motion.button
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => {
-                  sounds.playClick();
-                  if (maxUnlockedChapter > 1) {
-                    setGameState("CHAPTER_SELECT");
-                  } else {
-                    setCurrentChapter(1);
-                    setGameState("CHAPTER_INTRO");
-                    resetChapterStates();
-                  }
-                }}
-                className="retro-border bg-rose-600 hover:bg-rose-500 text-white font-black text-xl md:text-2xl px-12 py-5 shadow-[0_6px_20px_rgba(239,68,68,0.4)] transition-all cursor-pointer select-none"
-              >
-                PLAY GAME
-              </motion.button>
+              <div className="flex flex-col items-center gap-5">
+                <motion.button
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    sounds.playClick();
+                    if (maxUnlockedChapter > 1) {
+                      setGameState("CHAPTER_SELECT");
+                    } else {
+                      setCurrentChapter(1);
+                      setGameState("CHAPTER_INTRO");
+                      resetChapterStates();
+                    }
+                  }}
+                  className="retro-border bg-rose-600 hover:bg-rose-500 text-white font-black text-xl md:text-2xl px-12 py-5 shadow-[0_6px_20px_rgba(239,68,68,0.4)] transition-all cursor-pointer select-none"
+                >
+                  PLAY GAME
+                </motion.button>
+
+                {/* TITLE SCREEN SOUND TOGGLE */}
+                <motion.button
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 0.8 }}
+                  transition={{ delay: 0.6 }}
+                  whileHover={{ scale: 1.05, opacity: 1 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={toggleMute}
+                  className="retro-border bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 px-5 py-2.5 text-xs text-neutral-300 transition-all flex items-center gap-2 cursor-pointer select-none mt-2"
+                >
+                  {isMuted ? <VolumeX className="w-4 h-4 text-rose-500" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                  <span>{isMuted ? "BGM・音声をONにする" : "BGM・音声をミュート"}</span>
+                </motion.button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1228,7 +1404,11 @@ export default function App() {
                                 </span>
                                 <h4 
                                   onClick={() => handleOpenPage(pageId)}
-                                  className="text-base md:text-lg font-bold text-sky-400 hover:underline cursor-pointer mt-1.5"
+                                  className={`text-base md:text-lg font-bold hover:underline cursor-pointer mt-1.5 transition-colors ${
+                                    openedPages.includes(pageId)
+                                      ? "text-purple-400 hover:text-purple-300"
+                                      : "text-sky-400 hover:text-sky-300"
+                                  }`}
                                 >
                                   {page.title}
                                 </h4>
@@ -1506,20 +1686,16 @@ export default function App() {
                   COMPLETED DEMO
                 </span>
                 <h2 className="text-3xl font-bold text-rose-500 tracking-tight mt-4">
-                  FactChecker (仮)
+                  FactChecker
                 </h2>
                 <p className="text-neutral-400 text-xs mt-1">仕様書インタラクティブ・デモ</p>
 
                 <div className="border-t border-neutral-800 my-6 pt-6 text-sm text-neutral-300 flex flex-col gap-2.5">
-                  <p>企画・ゲームデザイン：熟練のゲームデザイナーAI</p>
+                  <p>企画：HX26A086</p>
+                  <p>ゲームデザイン：熟練のゲームデザイナーAI</p>
                   <p>プログラミング：熟練のゲームプログラマーAI</p>
                   <p>開発環境：Google AI Studio Build</p>
                 </div>
-
-                <p className="text-xs text-neutral-500 leading-relaxed">
-                  本デモは、メディアリテラシー向上ゲーム「FactChecker」のコアシステムおよび第1章（青い果実デモ騒動）が仕様書通りに実装されているかを確認するためのプロトタイプです。
-                </p>
-
                 <div className="flex flex-col gap-3 mt-6">
                   <button
                     onClick={() => {
